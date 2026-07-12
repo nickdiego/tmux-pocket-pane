@@ -16,9 +16,9 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: shellcheck
-        run: shellcheck tmux-pocket-pane.tmux scripts/pocket-pane.sh
+        run: shellcheck tmux-pocket-pane.tmux scripts/pocket-pane.sh scripts/restore-hook.sh
 
       - name: shfmt
         run: |
           sudo apt-get install -y shfmt
-          shfmt --diff tmux-pocket-pane.tmux scripts/pocket-pane.sh
+          shfmt --diff tmux-pocket-pane.tmux scripts/pocket-pane.sh scripts/restore-hook.sh

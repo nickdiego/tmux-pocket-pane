@@ -8,3 +8,4 @@
 
 PLUGIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 tmux set-option -gq "@pocket-pane-path" "$PLUGIN_DIR/scripts"
+tmux set-option -gq "@resurrect-hook-post-restore-all" "$PLUGIN_DIR/scripts/restore-hook.sh"

@@ -4,35 +4,51 @@
 #
 # pocket-pane.sh — toggle a named split pane in the current tmux window.
 #
-# Usage: pocket-pane.sh <name> <cmd> [size=40] [dir=h] [full=0]
+# Usage: pocket-pane.sh <name>
 #
-#   name   unique identifier for this pane within the window
-#   cmd    shell command to run when first creating the pane
-#   size   percentage of window width (h) or height (v), default 40
-#   dir    h = horizontal side pane | v = vertical bottom pane, default h
-#   full   1 = full window height/width (split-window -f)
-#          0 = split only from the current pane, default 0
+#   name   unique identifier for this pane (must match a @pocket-pane-<name>-cmd option)
 #
-# State is tracked per-window via tmux window option @pocket_pane_<name>,
-# storing "<pane_id> <size> <dir> <full>" so the original geometry can be
-# replayed on re-show.
+# Configuration (global tmux options):
+#   @pocket-pane-<name>-cmd     command to run on first launch (required)
+#   @pocket-pane-<name>-layout  comma-separated layout fields, all optional:
+#                               size:      40% (relative) or 40 (columns/lines), default 40%
+#                               direction: horizontal | vertical, default horizontal
+#                               span:      full | pane, default pane
+#                               example:   '40%,horizontal,full'
+#
+# State is tracked per-window via @pocket_pane_<name> storing "<pane_id>|<win_name>".
+# The win_name anchors hidden panes for tmux-resurrect re-registration.
 
 set -e
 
-NAME="${1:?Usage: pocket-pane.sh <name> <cmd> [size] [dir] [full]}"
-CMD="${2:-}"
-SIZE="${3:-40}"
-DIR="${4:-h}"
-FULL="${5:-0}"
-
+NAME="${1:?Usage: pocket-pane.sh <name>}"
 OPT="@pocket_pane_${NAME}"
+PREFIX="@pocket-pane-${NAME}"
+
+CMD=$(tmux show-options -gqv "${PREFIX}-cmd" 2>/dev/null || true)
+[ -z "$CMD" ] && {
+  echo "pocket-pane: ${PREFIX}-cmd not set" >&2
+  exit 1
+}
+LAYOUT=$(tmux show-options -gqv "${PREFIX}-layout" 2>/dev/null || true)
+
+# Parse layout fields by type — unambiguous, any order
+SIZE=$(printf '%s\n' "$LAYOUT" | tr ',' '\n' | grep -E '^[0-9]+%?$' | head -1)
+DIR=$(printf '%s\n' "$LAYOUT" | tr ',' '\n' | grep -E '^(horizontal|vertical)$' | head -1)
+SPAN=$(printf '%s\n' "$LAYOUT" | tr ',' '\n' | grep -E '^(full|pane)$' | head -1)
+SIZE="${SIZE:-40%}"
+DIR="${DIR:-horizontal}"
+SPAN="${SPAN:-pane}"
+
+[ "$DIR" = "horizontal" ] && DIR_FLAG="-h" || DIR_FLAG="-v"
+FULL_FLAG=
+[ "$SPAN" = "full" ] && FULL_FLAG="-f"
 
 CURR_WIN=$(tmux display-message -p '#{window_id}')
 CURR_PATH=$(tmux display-message -p '#{pane_current_path}')
 
-# Read stored state: "<pane_id> <size> <dir> <full>"
 STORED=$(tmux show-options -wqv "$OPT" 2>/dev/null || true)
-PANE_ID=$(echo "$STORED" | awk '{print $1}')
+PANE_ID=$(echo "$STORED" | cut -d'|' -f1)
 
 if [ -n "$PANE_ID" ] && tmux list-panes -a -F '#{pane_id}' 2>/dev/null | grep -qx "$PANE_ID"; then
   PANE_WIN=$(tmux display-message -p -t "$PANE_ID" '#{window_id}' 2>/dev/null || true)
@@ -40,31 +56,24 @@ if [ -n "$PANE_ID" ] && tmux list-panes -a -F '#{pane_id}' 2>/dev/null | grep -q
   if [ "$PANE_WIN" = "$CURR_WIN" ]; then
     # Visible → hide, but only if it's not the sole remaining pane
     if [ "$(tmux display-message -p '#{window_panes}')" -gt 1 ]; then
+      WIN_NAME=$(echo "$STORED" | cut -d'|' -f2-)
       tmux break-pane -d -s "$PANE_ID"
+      DETACHED_WIN=$(tmux display-message -p -t "$PANE_ID" '#{window_id}')
+      tmux rename-window -t "$DETACHED_WIN" "__pocket|${NAME}|${WIN_NAME}__"
     fi
   else
-    # Hidden → rejoin with original geometry
-    S=$(echo "$STORED" | awk '{print $2}')
-    D=$(echo "$STORED" | awk '{print $3}')
-    F=$(echo "$STORED" | awk '{print $4}')
-
-    FULL_FLAG=
-    [ "$F" = "1" ] && FULL_FLAG="-f"
-
+    # Hidden → rejoin with configured geometry
     # shellcheck disable=SC2086
-    tmux join-pane -"$D" $FULL_FLAG -l "${S}%" -s "$PANE_ID" -t "$CURR_WIN"
+    tmux join-pane "$DIR_FLAG" $FULL_FLAG -l "$SIZE" -s "$PANE_ID" -t "$CURR_WIN"
     tmux select-pane -t "$PANE_ID"
   fi
 else
-  # No pane or stale ID — create a fresh one
+  # No tracked pane or stale ID — create a fresh one
   tmux set-option -wqu "$OPT" 2>/dev/null || true
-
-  FULL_FLAG=
-  [ "$FULL" = "1" ] && FULL_FLAG="-f"
-
+  CURR_WIN_NAME=$(tmux display-message -p '#{window_name}')
   # shellcheck disable=SC2086
-  tmux split-window -"$DIR" $FULL_FLAG -l "${SIZE}%" -c "$CURR_PATH"
+  tmux split-window "$DIR_FLAG" $FULL_FLAG -l "$SIZE" -c "$CURR_PATH"
   PANE_ID=$(tmux display-message -p '#{pane_id}')
-  tmux set-option -wq "$OPT" "$PANE_ID $SIZE $DIR $FULL"
+  tmux set-option -wq "$OPT" "${PANE_ID}|${CURR_WIN_NAME}"
   [ -n "$CMD" ] && tmux send-keys "$CMD" Enter
 fi

@@ -19,25 +19,49 @@ Then `prefix + I` to install.
 
 ## Usage
 
-Bind `pocket-pane.sh` to a key with a name and the command to run:
+Declare each pocket pane with two global options, then bind the toggle key:
 
 ```tmux
-# A full-height claude side pane at 40% width, toggled with M-a
-bind -n M-a run-shell "#{@pocket-pane-path}/pocket-pane.sh claude 'claude' 40 h 1"
+set -g @pocket-pane-claude-cmd    'claude'
+set -g @pocket-pane-claude-layout '40%,horizontal,full'
+bind -n M-a run-shell "#{@pocket-pane-path}/pocket-pane.sh claude"
 ```
 
-```
-pocket-pane.sh <name> <cmd> [size=40] [dir=h] [full=0]
-```
+**`@pocket-pane-<name>-cmd`** — command to run on first launch (required)
 
-- **name** — unique identifier for this pane within the window
-- **cmd** — command to run on first launch
-- **size** — percentage of width (`h`) or height (`v`), default `40`
-- **dir** — `h` side pane · `v` bottom pane, default `h`
-- **full** — `1` spans the full window height/width · `0` splits from current pane
+**`@pocket-pane-<name>-layout`** — comma-separated layout fields, all optional,
+any order (type determines meaning):
+
+| Field | Values | Default |
+|---|---|---|
+| size | `40%` relative · `40` columns/lines | `40%` |
+| direction | `horizontal` · `vertical` | `horizontal` |
+| span | `full` (spans full window height/width) · `pane` (splits from current pane) | `pane` |
+
+Examples: `'40%,horizontal,full'` · `'60%'` · `'30%,full'`
 
 Press the key once to open, again to hide, again to get it back. Kill the pane
 and the next keypress starts a fresh one.
+
+## Resurrect
+
+tmux-pocket-pane integrates with [tmux-resurrect](https://github.com/tmux-plugins/tmux-resurrect)
+automatically — no extra configuration needed.
+
+After a session restore:
+
+- **Visible panes** are reclaimed by matching the running command against
+  the configured `cmd`, filtered by whether the pane spans the full window
+  dimension (the `full`/`pane` layout field). Works with
+  [tmux-continuum](https://github.com/tmux-plugins/tmux-continuum) auto-saves.
+- **Hidden panes** (detached windows) are re-registered via their encoded
+  window name and linked back to the source window by name.
+
+To opt out of visible-pane auto-reclaim:
+
+```tmux
+set -g @pocket-pane-claim-after-restore 'off'
+```
 
 ## License
 
