@@ -71,6 +71,4 @@ while IFS=' ' read -r pocket_ref encoded; do
 
   [ -n "$SRC_WIN" ] &&
     tmux set-option -wt "$SRC_WIN" "@pocket_pane_${NAME}" "${PANE_ID}|${WIN_NAME}"
-  # resurrect doesn't save window options; re-hide from status bar.
-  tmux set-option -wt "$pocket_ref" window-status-format ""
 done < <(tmux list-windows -a -F "$LIST_WINS_FMT" 2>/dev/null | grep ' __pocket|' || true)
