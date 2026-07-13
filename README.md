@@ -46,7 +46,22 @@ and the next keypress starts a fresh one.
 ## Resurrect
 
 tmux-pocket-pane integrates with [tmux-resurrect](https://github.com/tmux-plugins/tmux-resurrect)
-automatically — no extra configuration needed.
+automatically, but resurrect itself needs to know how to restart the pocket pane's process.
+Without this, the process won't be running after a restore and reclaim will find nothing to match.
+
+Add the command to resurrect's process list using the `~name->cmd` pattern (fuzzy match → restart command):
+
+```tmux
+set -g @resurrect-processes '~claude->claude'
+```
+
+Multiple processes can be space-separated:
+
+```tmux
+set -g @resurrect-processes '~claude->claude ~node->node'
+```
+
+See [this dotfiles config](https://github.com/nickdiego/dotfiles/blob/main/tmux.conf#L135-L138) for a fully functional reference.
 
 After a session restore:
 
