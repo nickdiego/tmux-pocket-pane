@@ -57,9 +57,17 @@ if [ -n "$PANE_ID" ] && tmux list-panes -a -F '#{pane_id}' 2>/dev/null | grep -q
     # Visible → hide, but only if it's not the sole remaining pane
     if [ "$(tmux display-message -p '#{window_panes}')" -gt 1 ]; then
       WIN_NAME=$(echo "$STORED" | cut -d'|' -f2-)
-      tmux break-pane -d -s "$PANE_ID"
+      # Break directly into the hidden session so the window never appears in
+      # the current session's status bar.
+      PLACEHOLDER=
+      if ! tmux has-session -t __pocket__ 2>/dev/null; then
+        tmux new-session -d -s __pocket__
+        PLACEHOLDER=$(tmux list-windows -t __pocket__ -F '#{window_id}' | head -1)
+      fi
+      tmux break-pane -d -s "$PANE_ID" -t __pocket__:
       DETACHED_WIN=$(tmux display-message -p -t "$PANE_ID" '#{window_id}')
       tmux rename-window -t "$DETACHED_WIN" "__pocket|${NAME}|${WIN_NAME}__"
+      [ -n "$PLACEHOLDER" ] && tmux kill-window -t "$PLACEHOLDER"
     fi
   else
     # Hidden → rejoin with configured geometry
