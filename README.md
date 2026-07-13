@@ -39,7 +39,7 @@ any order (type determines meaning):
 |---|---|---|
 | size | `40%` relative · `40` columns/lines | `40%` |
 | direction | `horizontal` · `vertical` | `horizontal` |
-| span | `full` (spans full window height/width) · `pane` (splits from current pane) | `pane` |
+| span | `full` (spans full window height/width) · `pane` (splits from border pane — right/bottom) | `pane` |
 
 Examples: `'40%,horizontal,full'` · `'60%'` · `'30%,full'`
 

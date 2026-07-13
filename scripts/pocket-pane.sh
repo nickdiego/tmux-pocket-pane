@@ -14,6 +14,8 @@
 #                               size:      40% (relative) or 40 (columns/lines), default 40%
 #                               direction: horizontal | vertical, default horizontal
 #                               span:      full | pane, default pane
+#                                            full: spans full window height/width (-f)
+#                                            pane: splits from the border pane (right/bottom)
 #                               example:   '40%,horizontal,full'
 #
 # State is tracked per-window via @pocket_pane_<name> storing "<pane_id>|<win_name>".
@@ -44,6 +46,21 @@ SPAN="${SPAN:-pane}"
 FULL_FLAG=
 [ "$SPAN" = "full" ] && FULL_FLAG="-f"
 
+# In pane span mode, split from/join to the border pane so the pocket always
+# appears at the window edge regardless of which pane is currently focused.
+# Horizontal: top-most of the right-most panes (largest pane_left+pane_width, then smallest pane_top)
+# Vertical:   left-most of the bottom-most panes (largest pane_top+pane_height, then smallest pane_left)
+find_border_pane() {
+  local win="$1" dir="$2"
+  if [ "$dir" = "horizontal" ]; then
+    tmux list-panes -t "$win" -F '#{pane_id} #{pane_left} #{pane_width} #{pane_top}' |
+      awk '{print $2+$3, $4, $1}' | sort -k1,1rn -k2,2n | awk 'NR==1{print $3}'
+  else
+    tmux list-panes -t "$win" -F '#{pane_id} #{pane_top} #{pane_height} #{pane_left}' |
+      awk '{print $2+$3, $4, $1}' | sort -k1,1rn -k2,2n | awk 'NR==1{print $3}'
+  fi
+}
+
 CURR_WIN=$(tmux display-message -p '#{window_id}')
 CURR_PATH=$(tmux display-message -p '#{pane_current_path}')
 
@@ -63,16 +80,26 @@ if [ -n "$PANE_ID" ] && tmux list-panes -a -F '#{pane_id}' 2>/dev/null | grep -q
     fi
   else
     # Hidden → rejoin with configured geometry
+    if [ -n "$FULL_FLAG" ]; then
+      TARGET="$CURR_WIN"
+    else
+      TARGET=$(find_border_pane "$CURR_WIN" "$DIR")
+    fi
     # shellcheck disable=SC2086
-    tmux join-pane "$DIR_FLAG" $FULL_FLAG -l "$SIZE" -s "$PANE_ID" -t "$CURR_WIN"
+    tmux join-pane "$DIR_FLAG" $FULL_FLAG -l "$SIZE" -s "$PANE_ID" -t "$TARGET"
     tmux select-pane -t "$PANE_ID"
   fi
 else
   # No tracked pane or stale ID — create a fresh one
   tmux set-option -wqu "$OPT" 2>/dev/null || true
   CURR_WIN_NAME=$(tmux display-message -p '#{window_name}')
+  if [ -n "$FULL_FLAG" ]; then
+    TARGET="$CURR_WIN"
+  else
+    TARGET=$(find_border_pane "$CURR_WIN" "$DIR")
+  fi
   # shellcheck disable=SC2086
-  tmux split-window "$DIR_FLAG" $FULL_FLAG -l "$SIZE" -c "$CURR_PATH"
+  tmux split-window "$DIR_FLAG" $FULL_FLAG -l "$SIZE" -c "$CURR_PATH" -t "$TARGET"
   PANE_ID=$(tmux display-message -p '#{pane_id}')
   tmux set-option -wq "$OPT" "${PANE_ID}|${CURR_WIN_NAME}"
   [ -n "$CMD" ] && tmux send-keys "$CMD" Enter
