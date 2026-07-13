@@ -2,6 +2,9 @@
 
 [![CI](https://github.com/nickdiego/tmux-pocket-pane/actions/workflows/ci.yml/badge.svg)](https://github.com/nickdiego/tmux-pocket-pane/actions/workflows/ci.yml)
 
+> **Early development.** The configuration API (option names, layout syntax) is
+> unstable and may change between releases without notice.
+
 Pocket a tmux pane and pull it back out when you need it — same shell,
 same session, right where you left it.
 
