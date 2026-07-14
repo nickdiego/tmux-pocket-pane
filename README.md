@@ -22,12 +22,12 @@ Then `prefix + I` to install.
 
 ## Usage
 
-Declare each pocket pane with two global options, then bind the toggle key:
+Declare each pocket pane with global options, then bind the toggle key:
 
 ```tmux
 set -g @pocket-pane-claude-cmd    'claude'
 set -g @pocket-pane-claude-layout '40%,horizontal,full'
-bind -n M-a run-shell "#{@pocket-pane-path}/pocket-pane.sh claude"
+bind -n M-a run-shell "#{@pocket-pane-path}/pocket-pane.sh toggle claude"
 ```
 
 **`@pocket-pane-<name>-cmd`** — command to run on first launch (required)
@@ -42,6 +42,15 @@ any order (type determines meaning):
 | span | `full` (spans full window height/width) · `pane` (splits from border pane — right/bottom) | `pane` |
 
 Examples: `'40%,horizontal,full'` · `'60%'` · `'30%,full'`
+
+**`@pocket-pane-<name>-exit-behavior`** — what to do when the command exits:
+
+| Value | Behavior |
+|---|---|
+| `close` (default) | close the pane immediately, no notice |
+| `prompt` | print exit status, wait for keypress, then close |
+| `release` | hand off to the user's shell |
+| `ask` | prompt: `[c]lose` · `[r]elease` |
 
 Press the key once to open, again to hide, again to get it back. Kill the pane
 and the next keypress starts a fresh one.
