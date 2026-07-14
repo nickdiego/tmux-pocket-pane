@@ -66,101 +66,113 @@ find_border_pane() {
 
 cmd_toggle() {
   [ $# -eq 0 ] && die "toggle: <name> required"
-  NAME="$1"
-  PANE_OPT="@pocket_pane_${NAME}"
-  PREFIX="@pocket-pane-${NAME}"
+  local name="$1"
+  local pane_opt="@pocket_pane_${name}"
+  local prefix="@pocket-pane-${name}"
 
-  CMD=$(tmux show-options -gqv "${PREFIX}-cmd" 2>/dev/null || true)
-  [ -z "$CMD" ] && die "${PREFIX}-cmd not set"
-  LAYOUT=$(tmux show-options -gqv "${PREFIX}-layout" 2>/dev/null || true)
+  local cmd
+  cmd=$(tmux show-options -gqv "${prefix}-cmd" 2>/dev/null || true)
+  [ -z "$cmd" ] && die "${prefix}-cmd not set"
+  local layout
+  layout=$(tmux show-options -gqv "${prefix}-layout" 2>/dev/null || true)
 
   # Parse layout fields by type -- unambiguous, any order
-  SIZE=$(printf '%s\n' "$LAYOUT" | tr ',' '\n' | grep -E '^[0-9]+%?$' | head -1)
-  DIR=$(printf '%s\n' "$LAYOUT" | tr ',' '\n' | grep -E '^(horizontal|vertical)$' | head -1)
-  SPAN=$(printf '%s\n' "$LAYOUT" | tr ',' '\n' | grep -E '^(full|pane)$' | head -1)
-  SIZE="${SIZE:-40%}"
-  DIR="${DIR:-horizontal}"
-  SPAN="${SPAN:-pane}"
-  EXIT_BEHAVIOR=$(tmux show-options -gqv "${PREFIX}-exit-behavior" 2>/dev/null || true)
-  EXIT_BEHAVIOR="${EXIT_BEHAVIOR:-close}"
-  case "$EXIT_BEHAVIOR" in
+  local size dir span
+  size=$(printf '%s\n' "$layout" | tr ',' '\n' | grep -E '^[0-9]+%?$' | head -1)
+  dir=$(printf '%s\n' "$layout" | tr ',' '\n' | grep -E '^(horizontal|vertical)$' | head -1)
+  span=$(printf '%s\n' "$layout" | tr ',' '\n' | grep -E '^(full|pane)$' | head -1)
+  size="${size:-40%}"
+  dir="${dir:-horizontal}"
+  span="${span:-pane}"
+  local exit_behavior
+  exit_behavior=$(tmux show-options -gqv "${prefix}-exit-behavior" 2>/dev/null || true)
+  exit_behavior="${exit_behavior:-close}"
+  case "$exit_behavior" in
   close | prompt | release | ask) ;;
-  *) die "invalid ${PREFIX}-exit-behavior '${EXIT_BEHAVIOR}': must be close, prompt, release, or ask" ;;
+  *) die "invalid ${prefix}-exit-behavior '${exit_behavior}': must be close, prompt, release, or ask" ;;
   esac
 
-  [ "$DIR" = "horizontal" ] && DIR_FLAG="-h" || DIR_FLAG="-v"
-  FULL_FLAG=
-  [ "$SPAN" = "full" ] && FULL_FLAG="-f"
+  local dir_flag full_flag
+  [ "$dir" = "horizontal" ] && dir_flag="-h" || dir_flag="-v"
+  full_flag=
+  [ "$span" = "full" ] && full_flag="-f"
 
-  CURR_WIN=$(tmux display-message -p '#{window_id}')
-  CURR_PATH=$(tmux display-message -p '#{pane_current_path}')
+  local curr_win curr_path
+  curr_win=$(tmux display-message -p '#{window_id}')
+  curr_path=$(tmux display-message -p '#{pane_current_path}')
 
-  STORED=$(tmux show-options -wqv "$PANE_OPT" 2>/dev/null || true)
-  PANE_ID=$(echo "$STORED" | cut -d'|' -f1)
+  local stored pane_id
+  stored=$(tmux show-options -wqv "$pane_opt" 2>/dev/null || true)
+  pane_id=$(echo "$stored" | cut -d'|' -f1)
 
-  if [ -n "$PANE_ID" ] && tmux list-panes -a -F '#{pane_id}' 2>/dev/null | grep -qx "$PANE_ID"; then
-    PANE_WIN=$(tmux display-message -p -t "$PANE_ID" '#{window_id}' 2>/dev/null || true)
+  if [ -n "$pane_id" ] && tmux list-panes -a -F '#{pane_id}' 2>/dev/null | grep -qx "$pane_id"; then
+    local pane_win
+    pane_win=$(tmux display-message -p -t "$pane_id" '#{window_id}' 2>/dev/null || true)
 
-    if [ "$PANE_WIN" = "$CURR_WIN" ]; then
+    if [ "$pane_win" = "$curr_win" ]; then
       # Visible → hide, but only if it's not the sole remaining pane
       if [ "$(tmux display-message -p '#{window_panes}')" -gt 1 ]; then
-        WIN_NAME=$(echo "$STORED" | cut -d'|' -f2-)
+        local win_name
+        win_name=$(echo "$stored" | cut -d'|' -f2-)
         # -n sets the name atomically at creation; the global window-status-format
         # conditional in tmux-pocket-pane.tmux hides it before any status bar redraw.
-        tmux break-pane -d -n "__pocket|${NAME}|${WIN_NAME}__" -s "$PANE_ID"
+        tmux break-pane -d -n "__pocket|${name}|${win_name}__" -s "$pane_id"
       fi
     else
       # Hidden → rejoin with configured geometry
-      if [ -n "$FULL_FLAG" ]; then
-        TARGET="$CURR_WIN"
+      local target
+      if [ -n "$full_flag" ]; then
+        target="$curr_win"
       else
-        TARGET=$(find_border_pane "$CURR_WIN" "$DIR")
+        target=$(find_border_pane "$curr_win" "$dir")
       fi
       # shellcheck disable=SC2086
-      tmux join-pane "$DIR_FLAG" $FULL_FLAG -l "$SIZE" -s "$PANE_ID" -t "$TARGET"
-      tmux select-pane -t "$PANE_ID"
+      tmux join-pane "$dir_flag" $full_flag -l "$size" -s "$pane_id" -t "$target"
+      tmux select-pane -t "$pane_id"
     fi
   else
     # No tracked pane or stale ID -- create a fresh one
-    tmux set-option -wqu "$PANE_OPT" 2>/dev/null || true
-    CURR_WIN_NAME=$(tmux display-message -p '#{window_name}')
-    if [ -n "$FULL_FLAG" ]; then
-      TARGET="$CURR_WIN"
+    tmux set-option -wqu "$pane_opt" 2>/dev/null || true
+    local curr_win_name target
+    curr_win_name=$(tmux display-message -p '#{window_name}')
+    if [ -n "$full_flag" ]; then
+      target="$curr_win"
     else
-      TARGET=$(find_border_pane "$CURR_WIN" "$DIR")
+      target=$(find_border_pane "$curr_win" "$dir")
     fi
     # shellcheck disable=SC2086
-    tmux split-window "$DIR_FLAG" $FULL_FLAG -l "$SIZE" -c "$CURR_PATH" -t "$TARGET" \
-      -- "$SELF" run "$EXIT_BEHAVIOR" "$NAME" "$CMD"
-    PANE_ID=$(tmux display-message -p '#{pane_id}')
-    tmux set-option -wq "$PANE_OPT" "${PANE_ID}|${CURR_WIN_NAME}"
+    tmux split-window "$dir_flag" $full_flag -l "$size" -c "$curr_path" -t "$target" \
+      -- "$SELF" run "$exit_behavior" "$name" "$cmd"
+    pane_id=$(tmux display-message -p '#{pane_id}')
+    tmux set-option -wq "$pane_opt" "${pane_id}|${curr_win_name}"
   fi
 }
 
 cmd_run() {
   [ $# -lt 3 ] && die "run: <exit-behavior>, <name> and <cmd> required"
-  EXIT_BEHAVIOR="$1"
-  NAME="$2"
-  CMD="$3"
-  EXIT=0
-  eval "$CMD" || EXIT=$?
-  case "$EXIT_BEHAVIOR" in
+  local exit_behavior="$1"
+  local name="$2"
+  local cmd="$3"
+  local exit_code=0
+  eval "$cmd" || exit_code=$?
+  case "$exit_behavior" in
   prompt)
     echo
-    printf 'pocket-pane: process exited (status %d) -- press any key to close\n' "$EXIT"
+    printf 'pocket-pane: process exited (status %d) -- press any key to close\n' "$exit_code"
     read -rsn1
     tmux kill-pane -t "$TMUX_PANE"
     ;;
   release)
-    hand_off_pane "$NAME"
+    hand_off_pane "$name"
     ;;
   ask)
     echo
-    printf 'pocket-pane: process exited (status %d) -- [C]lose / [r]elease: ' "$EXIT"
-    read -rsn1 KEY
+    printf 'pocket-pane: process exited (status %d) -- [C]lose / [r]elease: ' "$exit_code"
+    local key
+    read -rsn1 key
     echo
-    case "$KEY" in
-    r | R) hand_off_pane "$NAME" ;;
+    case "$key" in
+    r | R) hand_off_pane "$name" ;;
     *) tmux kill-pane -t "$TMUX_PANE" ;;
     esac
     ;;
