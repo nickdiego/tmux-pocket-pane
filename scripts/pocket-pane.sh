@@ -46,6 +46,8 @@ hand_off_pane() {
   local name="$1"
   local pane_opt="@pocket_pane_${name}"
   tmux set-option -wqu "$pane_opt" 2>/dev/null || true
+  tmux set-option -wqu "@pocket_pane_layout_${name}" 2>/dev/null || true
+  tmux set-option -wqu "@pocket_pane_layout_without_${name}" 2>/dev/null || true
   exec "${SHELL:-bash}"
 }
 
@@ -54,13 +56,15 @@ hand_off_pane() {
 # Horizontal: top-most of the right-most panes (largest pane_left+pane_width, then smallest pane_top)
 # Vertical:   left-most of the bottom-most panes (largest pane_top+pane_height, then smallest pane_left)
 find_border_pane() {
-  local win="$1" dir="$2"
+  local win="$1" dir="$2" excl="${3:-}"
   if [ "$dir" = "horizontal" ]; then
     tmux list-panes -t "$win" -F '#{pane_id} #{pane_left} #{pane_width} #{pane_top}' |
-      awk '{print $2+$3, $4, $1}' | sort -k1,1rn -k2,2n | awk 'NR==1{print $3}'
+      awk -v excl="$excl" '$1 != excl {print $2+$3, $4, $1}' |
+      sort -k1,1rn -k2,2n | awk 'NR==1{print $3}'
   else
     tmux list-panes -t "$win" -F '#{pane_id} #{pane_top} #{pane_height} #{pane_left}' |
-      awk '{print $2+$3, $4, $1}' | sort -k1,1rn -k2,2n | awk 'NR==1{print $3}'
+      awk -v excl="$excl" '$1 != excl {print $2+$3, $4, $1}' |
+      sort -k1,1rn -k2,2n | awk 'NR==1{print $3}'
   fi
 }
 
@@ -114,32 +118,50 @@ cmd_toggle() {
       if [ "$(tmux display-message -p '#{window_panes}')" -gt 1 ]; then
         local win_name
         win_name=$(echo "$stored" | cut -d'|' -f2-)
+        tmux set-option -wq "@pocket_pane_layout_${name}" \
+          "$(tmux display-message -p '#{window_layout}')"
         # -n sets the name atomically at creation; the global window-status-format
         # conditional in tmux-pocket-pane.tmux hides it before any status bar redraw.
         tmux break-pane -d -n "__pocket|${name}|${win_name}__" -s "$pane_id"
+        # Restore pre-P layout so siblings are left at their natural sizes
+        local without_layout
+        without_layout=$(tmux show-options -wqv "@pocket_pane_layout_without_${name}" 2>/dev/null || true)
+        if [ -n "$without_layout" ]; then
+          tmux select-layout -t "$curr_win" "$without_layout" 2>/dev/null || true
+        fi
       fi
     else
       # Hidden → rejoin with configured geometry
       local target
-      if [ -n "$full_flag" ]; then
-        target="$curr_win"
-      else
-        target=$(find_border_pane "$curr_win" "$dir")
-      fi
+      target=$(find_border_pane "$curr_win" "$dir")
       # shellcheck disable=SC2086
       tmux join-pane "$dir_flag" $full_flag -l "$size" -s "$pane_id" -t "$target"
       tmux select-pane -t "$pane_id"
+      local stored_layout
+      stored_layout=$(tmux show-options -wqv "@pocket_pane_layout_${name}" 2>/dev/null || true)
+      if [ -n "$stored_layout" ]; then
+        tmux select-layout -t "$curr_win" "$stored_layout" 2>/dev/null || true
+        tmux set-option -wqu "@pocket_pane_layout_${name}" 2>/dev/null || true
+      fi
     fi
   else
     # No tracked pane or stale ID -- create a fresh one
     tmux set-option -wqu "$pane_opt" 2>/dev/null || true
+    tmux set-option -wqu "@pocket_pane_layout_${name}" 2>/dev/null || true
     local curr_win_name target
     curr_win_name=$(tmux display-message -p '#{window_name}')
-    if [ -n "$full_flag" ]; then
-      target="$curr_win"
-    else
+    target=$(find_border_pane "$curr_win" "$dir")
+    # If P previously exited without being hidden, siblings may be skewed;
+    # restore the saved pre-P layout before splitting so creation is always clean.
+    local without_layout
+    without_layout=$(tmux show-options -wqv "@pocket_pane_layout_without_${name}" 2>/dev/null || true)
+    if [ -n "$without_layout" ]; then
+      tmux select-layout -t "$curr_win" "$without_layout" 2>/dev/null || true
       target=$(find_border_pane "$curr_win" "$dir")
     fi
+    # Store the current (pre-P) layout so every hide can restore siblings cleanly.
+    tmux set-option -wq "@pocket_pane_layout_without_${name}" \
+      "$(tmux display-message -p '#{window_layout}')"
     # shellcheck disable=SC2086
     tmux split-window "$dir_flag" $full_flag -l "$size" -c "$curr_path" -t "$target" \
       -- "$SELF" run "$exit_behavior" "$name" "$cmd"
