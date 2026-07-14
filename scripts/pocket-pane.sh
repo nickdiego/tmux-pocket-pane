@@ -118,16 +118,53 @@ cmd_toggle() {
       if [ "$(tmux display-message -p '#{window_panes}')" -gt 1 ]; then
         local win_name
         win_name=$(echo "$stored" | cut -d'|' -f2-)
+
+        # Record current sibling sizes (sorted by position, pocket pane excluded) so
+        # the proportional "without" layout can be recomputed at hide time, capturing
+        # any manual resizes the user made while the pocket pane was visible.
+        local sib_entries="" sib_total=0 resize_flag
+        [ "$dir" = "horizontal" ] && resize_flag="-x" || resize_flag="-y"
+        while IFS=: read -r sib_pid sib_sz; do
+          sib_entries="${sib_entries}${sib_pid}:${sib_sz} "
+          sib_total=$((sib_total + sib_sz))
+        done < <(
+          if [ "$dir" = "horizontal" ]; then
+            tmux list-panes -t "$curr_win" -F '#{pane_id} #{pane_left} #{pane_width}'
+          else
+            tmux list-panes -t "$curr_win" -F '#{pane_id} #{pane_top} #{pane_height}'
+          fi |
+            awk -v excl="$pane_id" '$1 != excl {print $2, $1 ":" $3}' |
+            sort -k1,1n | awk '{print $2}'
+        )
+
         tmux set-option -wq "@pocket_pane_layout_${name}" \
           "$(tmux display-message -p '#{window_layout}')"
         # -n sets the name atomically at creation; the global window-status-format
         # conditional in tmux-pocket-pane.tmux hides it before any status bar redraw.
         tmux break-pane -d -n "__pocket|${name}|${win_name}__" -s "$pane_id"
-        # Restore pre-P layout so siblings are left at their natural sizes
-        local without_layout
-        without_layout=$(tmux show-options -wqv "@pocket_pane_layout_without_${name}" 2>/dev/null || true)
-        if [ -n "$without_layout" ]; then
-          tmux select-layout -t "$curr_win" "$without_layout" 2>/dev/null || true
+
+        # Restore siblings proportionally (preserving their pre-hide A:B ratio), then
+        # snapshot the result as the fresh "without" layout for next re-show or create.
+        if [ "$sib_total" -gt 0 ]; then
+          local win_dim n_sibs win_avail last_pid=""
+          if [ "$dir" = "horizontal" ]; then
+            win_dim=$(tmux display-message -p '#{window_width}')
+          else
+            win_dim=$(tmux display-message -p '#{window_height}')
+          fi
+          n_sibs=$(echo "$sib_entries" | wc -w | tr -d ' ')
+          win_avail=$((win_dim - n_sibs + 1))
+          for entry in $sib_entries; do last_pid="${entry%%:*}"; done
+          for entry in $sib_entries; do
+            local sib_pid sib_sz
+            sib_pid="${entry%%:*}"
+            sib_sz="${entry##*:}"
+            [ "$sib_pid" = "$last_pid" ] && continue
+            tmux resize-pane -t "$sib_pid" "$resize_flag" \
+              "$((sib_sz * win_avail / sib_total))" 2>/dev/null || true
+          done
+          tmux set-option -wq "@pocket_pane_layout_without_${name}" \
+            "$(tmux display-message -p '#{window_layout}')"
         fi
       fi
     else

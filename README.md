@@ -106,19 +106,6 @@ its space on exit.
 
 Workaround: toggle the pocket pane off (hide it) before letting the process exit.
 
-### Manual sibling pane resizes reset on hide ([#10](https://github.com/nickdiego/tmux-pocket-pane/issues/10))
-
-The pre-pocket layout (restored when the pocket pane is hidden) is captured
-once at creation time. If you manually resize sibling panes while the pocket
-pane is visible, hiding the pocket pane snaps them back to their
-creation-time sizes rather than preserving the manual resize.
-
-Note: the **with-pocket** layout is captured at hide time, so re-showing
-the pocket pane correctly restores the manually-resized state, only the
-hidden state is affected.
-
-Workaround: resize sibling panes after hiding the pocket pane, not while it
-is visible.
 
 ## License
 
