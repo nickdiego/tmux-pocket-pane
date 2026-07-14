@@ -90,23 +90,6 @@ To opt out of visible-pane auto-reclaim:
 set -g @pocket-pane-claim-after-restore 'off'
 ```
 
-## Known Issues
-
-### Sibling pane sizes not restored when pocket pane closes (not hidden) ([#9](https://github.com/nickdiego/tmux-pocket-pane/issues/9))
-
-When the pocket pane process exits and the pane is **closed** (via
-`exit-behavior: close`, `prompt`, or `ask → close`), tmux gives the pocket
-pane's space entirely to the adjacent sibling rather than distributing it
-proportionally. Sibling panes are left with skewed sizes until the pocket
-pane is next opened, which restores the pre-pocket layout.
-
-This affects `span=full` only. In `span=pane` mode the close path is
-symmetric: the border pane that was split to create the pocket pane absorbs
-its space on exit.
-
-Workaround: toggle the pocket pane off (hide it) before letting the process exit.
-
-
 ## License
 
 MIT
