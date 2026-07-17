@@ -46,7 +46,7 @@ hand_off_pane() {
   local name="$1"
   local pane_opt="@pocket_pane_${name}"
   tmux set-option -wqu "$pane_opt" 2>/dev/null || true
-  tmux set-option -wqu "@pocket_pane_layout_${name}" 2>/dev/null || true
+  tmux set-option -wqu "@pocket_pane_size_${name}" 2>/dev/null || true
   tmux set-option -wqu "@pocket_pane_layout_without_${name}" 2>/dev/null || true
   exec "${SHELL:-bash}"
 }
@@ -165,8 +165,10 @@ cmd_toggle() {
             sort -k1,1n | awk '{print $2}'
         )
 
-        tmux set-option -wq "@pocket_pane_layout_${name}" \
-          "$(tmux display-message -p '#{window_layout}')"
+        local p_dim_fmt
+        [ "$dir" = "horizontal" ] && p_dim_fmt='#{pane_width}' || p_dim_fmt='#{pane_height}'
+        tmux set-option -wq "@pocket_pane_size_${name}" \
+          "$(tmux display-message -p -t "$pane_id" "$p_dim_fmt")"
         # -n sets the name atomically at creation; the global window-status-format
         # conditional in tmux-pocket-pane.tmux hides it before any status bar redraw.
         tmux break-pane -d -n "__pocket|${name}|${win_name}__" -s "$pane_id"
@@ -182,17 +184,18 @@ cmd_toggle() {
       # shellcheck disable=SC2086
       tmux join-pane "$dir_flag" $full_flag -l "$size" -s "$pane_id" -t "$target"
       tmux select-pane -t "$pane_id"
-      local stored_layout
-      stored_layout=$(tmux show-options -wqv "@pocket_pane_layout_${name}" 2>/dev/null || true)
-      if [ -n "$stored_layout" ]; then
-        tmux select-layout -t "$curr_win" "$stored_layout" 2>/dev/null || true
-        tmux set-option -wqu "@pocket_pane_layout_${name}" 2>/dev/null || true
+      local stored_p_size p_resize_flag
+      stored_p_size=$(tmux show-options -wqv "@pocket_pane_size_${name}" 2>/dev/null || true)
+      if [ -n "$stored_p_size" ]; then
+        [ "$dir" = "horizontal" ] && p_resize_flag="-x" || p_resize_flag="-y"
+        tmux resize-pane -t "$pane_id" "$p_resize_flag" "$stored_p_size" 2>/dev/null || true
+        tmux set-option -wqu "@pocket_pane_size_${name}" 2>/dev/null || true
       fi
     fi
   else
     # No tracked pane or stale ID -- create a fresh one
     tmux set-option -wqu "$pane_opt" 2>/dev/null || true
-    tmux set-option -wqu "@pocket_pane_layout_${name}" 2>/dev/null || true
+    tmux set-option -wqu "@pocket_pane_size_${name}" 2>/dev/null || true
     local curr_win_name target
     curr_win_name=$(tmux display-message -p '#{window_name}')
     target=$(find_border_pane "$curr_win" "$dir")
@@ -244,7 +247,7 @@ _do_close() {
   fi
   # Clear tracking on the user's window (we may now be in the background window after break-pane).
   tmux set-option -wqu -t "$curr_win" "@pocket_pane_${name}" 2>/dev/null || true
-  tmux set-option -wqu -t "$curr_win" "@pocket_pane_layout_${name}" 2>/dev/null || true
+  tmux set-option -wqu -t "$curr_win" "@pocket_pane_size_${name}" 2>/dev/null || true
   tmux kill-pane -t "$TMUX_PANE"
 }
 
